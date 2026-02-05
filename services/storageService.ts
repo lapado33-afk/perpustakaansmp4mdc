@@ -13,42 +13,57 @@ const KEYS = {
 };
 
 /**
- * Fungsi pembantu untuk mengubah Array of Objects menjadi 2D Array (Tabel)
- * agar Google Sheets mengenali header dengan benar.
+ * Definisi Header Eksplisit untuk menjaga konsistensi di Google Sheets
  */
-const formatForSheet = (data: any[]) => {
-  if (!data || data.length === 0) return [];
-  // Ambil kunci dari objek pertama sebagai header
-  const headers = Object.keys(data[0]);
-  // Map data menjadi baris-baris
-  const rows = data.map(obj => headers.map(header => obj[header] ?? ''));
+const SHEET_HEADERS: Record<string, string[]> = {
+  'Books': ['id', 'code', 'title', 'author', 'publisher', 'year', 'category', 'count', 'available'],
+  'Members': ['id', 'nomorInduk', 'name', 'className', 'type'],
+  'Loans': ['id', 'memberId', 'memberName', 'bookId', 'bookTitle', 'loanDate', 'dueDate', 'returnDate', 'status', 'fine'],
+  'Reports': ['timestamp', 'librarian', 'filter', 'content']
+};
+
+/**
+ * Mengonversi Array of Objects menjadi 2D Array dengan Header Statis
+ */
+const formatForSheet = (sheetName: string, data: any[]) => {
+  const headers = SHEET_HEADERS[sheetName];
+  if (!headers) return [];
+  
+  const rows = data.map(obj => 
+    headers.map(header => {
+      const val = obj[header];
+      return (val === null || val === undefined) ? '' : val;
+    })
+  );
+  
   return [headers, ...rows];
 };
 
 const syncToCloud = async (sheetName: string, rawData: any[]) => {
   if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes('YOUR_SCRIPT_ID')) {
-    console.warn(`Sinkronisasi [${sheetName}] tertunda: URL Google Script belum diset.`);
+    console.warn(`Sinkronisasi [${sheetName}] diabaikan: URL Google Script belum valid.`);
     return;
   }
   
   try {
-    const formattedData = formatForSheet(rawData);
+    const formattedData = formatForSheet(sheetName, rawData);
     
+    // Kirim data sebagai payload JSON yang bersih
     await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
-      mode: 'no-cors',
+      mode: 'no-cors', // Penting untuk Apps Script agar tidak error CORS
       headers: { 
         'Content-Type': 'application/json' 
       },
       body: JSON.stringify({ 
         sheetName, 
         data: formattedData,
-        isTableFormat: true
+        timestamp: new Date().toISOString()
       })
     });
-    console.log(`Cloud Sync Berhasil: ${sheetName}`);
+    console.log(`✓ Berhasil Sinkronisasi: ${sheetName}`);
   } catch (error) {
-    console.error(`Cloud Sync Gagal [${sheetName}]:`, error);
+    console.error(`✗ Gagal Sinkronisasi [${sheetName}]:`, error);
   }
 };
 
