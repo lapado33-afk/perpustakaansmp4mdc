@@ -27,29 +27,28 @@ const formatForSheet = (data: any[]) => {
 
 const syncToCloud = async (sheetName: string, rawData: any[]) => {
   if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes('YOUR_SCRIPT_ID')) {
-    console.warn("Sinkronisasi gagal: URL Google Script belum dikonfigurasi.");
+    console.warn(`Sinkronisasi [${sheetName}] tertunda: URL Google Script belum diset.`);
     return;
   }
   
   try {
-    // Kirim data dalam format tabel (2D Array) untuk mengunci header
     const formattedData = formatForSheet(rawData);
     
     await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
-      mode: 'no-cors', // Penting untuk menghindari masalah CORS pada Apps Script
+      mode: 'no-cors',
       headers: { 
         'Content-Type': 'application/json' 
       },
       body: JSON.stringify({ 
         sheetName, 
         data: formattedData,
-        isTableFormat: true // Memberitahu skrip bahwa ini format tabel
+        isTableFormat: true
       })
     });
-    console.log(`Sinkronisasi Cloud Berhasil: ${sheetName}`);
+    console.log(`Cloud Sync Berhasil: ${sheetName}`);
   } catch (error) {
-    console.error(`Sinkronisasi Cloud Gagal: ${sheetName}`, error);
+    console.error(`Cloud Sync Gagal [${sheetName}]:`, error);
   }
 };
 
@@ -80,7 +79,8 @@ export const storageService = {
   },
   
   saveReport: (report: { timestamp: string, librarian: string, filter: string, content: string }) => {
-    const existing = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
+    const existingStr = localStorage.getItem(KEYS.REPORTS);
+    const existing = existingStr ? JSON.parse(existingStr) : [];
     const updated = [report, ...existing].slice(0, 50); 
     localStorage.setItem(KEYS.REPORTS, JSON.stringify(updated));
     syncToCloud('Reports', updated);
@@ -93,7 +93,7 @@ export const storageService = {
       const cloudData = await response.json();
       return cloudData;
     } catch (error) {
-      console.error("Gagal mengambil data dari Cloud", error);
+      console.error("Fetch Cloud Data Error:", error);
       return null;
     }
   }
