@@ -27,18 +27,27 @@ const App: React.FC = () => {
       setLoans(storageService.getLoans());
       
       // 2. Coba sinkronisasi dari Cloud (Google Sheets)
-      const cloudData = await storageService.fetchFullData();
-      if (cloudData) {
-        if (cloudData.Books) setBooks(cloudData.Books);
-        if (cloudData.Members) setMembers(cloudData.Members);
-        if (cloudData.Loans) setLoans(cloudData.Loans);
-        
-        // Simpan hasil cloud ke local
-        if (cloudData.Books) localStorage.setItem('lib_books', JSON.stringify(cloudData.Books));
-        if (cloudData.Members) localStorage.setItem('lib_members', JSON.stringify(cloudData.Members));
-        if (cloudData.Loans) localStorage.setItem('lib_loans', JSON.stringify(cloudData.Loans));
+      try {
+        const cloudData = await storageService.fetchFullData();
+        if (cloudData) {
+          if (Array.isArray(cloudData.Books)) {
+            setBooks(cloudData.Books);
+            localStorage.setItem('lib_books', JSON.stringify(cloudData.Books));
+          }
+          if (Array.isArray(cloudData.Members)) {
+            setMembers(cloudData.Members);
+            localStorage.setItem('lib_members', JSON.stringify(cloudData.Members));
+          }
+          if (Array.isArray(cloudData.Loans)) {
+            setLoans(cloudData.Loans);
+            localStorage.setItem('lib_loans', JSON.stringify(cloudData.Loans));
+          }
+        }
+      } catch (err) {
+        console.warn("Cloud sync deferred:", err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     loadInitialData();
@@ -107,7 +116,7 @@ const App: React.FC = () => {
     storageService.saveLoans(updatedLoans);
 
     const updatedBooks = books.map(b => 
-      b.id === targetLoan.bookId ? { ...b, available: b.available + 1 } : b
+      b.id === targetLoan.bookId ? { ...b, available: (b.available || 0) + 1 } : b
     );
     setBooks(updatedBooks);
     storageService.saveBooks(updatedBooks);
@@ -117,7 +126,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <Loader2 className="animate-spin text-indigo-600 mb-4" size={48} />
-        <p className="text-slate-500 font-medium animate-pulse">Menghubungkan ke Cloud Spreadsheet...</p>
+        <p className="text-slate-500 font-medium">Menghubungkan ke Database...</p>
       </div>
     );
   }
