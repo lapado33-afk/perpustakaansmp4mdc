@@ -13,7 +13,8 @@ import {
   User,
   Filter,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Key
 } from 'lucide-react';
 import { Book, Loan, Member, LoanStatus } from '../types';
 import { GoogleGenAI } from "@google/genai";
@@ -99,14 +100,23 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
 
   const generateAIReport = async () => {
     setErrorMsg(null);
+    
+    // Validasi Nama Petugas
     if (!librarianName.trim()) {
-      setErrorMsg("Mohon masukkan nama petugas pelapor.");
+      setErrorMsg("Mohon masukkan nama petugas pelapor sebelum membuat laporan.");
       return;
     }
 
+    // Pengecekan API KEY (Akses langsung ke process.env sesuai instruksi)
     const apiKey = process.env.API_KEY;
-    if (!apiKey || apiKey === "API_KEY_ANDA") {
-      setErrorMsg("API Key tidak ditemukan. Pastikan sudah diset di Vercel/Environment Variables.");
+    
+    if (!apiKey) {
+      setErrorMsg("Konfigurasi API_KEY tidak ditemukan. Pastikan Bro sudah mencentang 'Production', 'Preview', dan 'Development' di settings Environment Variables.");
+      return;
+    }
+
+    if (apiKey === "API_KEY_ANDA") {
+      setErrorMsg("API_KEY masih menggunakan teks placeholder. Silakan tempelkan kode API yang asli.");
       return;
     }
     
@@ -119,20 +129,21 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
       const prompt = `
         Tulis laporan naratif resmi untuk Perpustakaan UPT SMPN 4 Mappedeceng.
         
-        DATA:
+        DATA STATISTIK:
         - Petugas: ${librarianName}
-        - Periode: ${filterDesc}
-        - Total Buku: ${stats.totalBooks}
-        - Total Peminjaman: ${stats.totalLoans}
-        - Buku Terfavorit: ${stats.popularBook}
-        - Siswa Terlambat: ${stats.totalLate}
-        - Total Denda: Rp ${stats.totalFines.toLocaleString()}
+        - Periode Laporan: ${filterDesc}
+        - Total Koleksi: ${stats.totalBooks} buku
+        - Total Transaksi Peminjaman: ${stats.totalLoans} kali
+        - Buku Terfavorit Siswa: ${stats.popularBook}
+        - Jumlah Siswa Terlambat: ${stats.totalLate} orang
+        - Total Akumulasi Denda: Rp ${stats.totalFines.toLocaleString()}
 
-        INSTRUKSI:
-        1. Gunakan Bahasa Indonesia formal (gaya laporan dinas pendidikan).
-        2. Tuliskan dalam bentuk paragraf mengalir (naratif).
-        3. JANGAN GUNAKAN format markdown (seperti **, ##, atau daftar poin).
-        4. Judul: LAPORAN RESMI SIRKULASI PERPUSTAKAAN UPT SMPN 4 MAPPEDECENG.
+        INSTRUKSI PENULISAN:
+        1. Gunakan Bahasa Indonesia formal yang sangat sopan (Dinas Pendidikan).
+        2. Format naratif (paragraf), bukan poin-poin.
+        3. DILARANG menggunakan tanda markdown seperti asterik (*), pagar (#), atau underscore (_).
+        4. Berikan analisis singkat tentang tren minat baca siswa berdasarkan data di atas.
+        5. Judul: LAPORAN RESMI SIRKULASI PERPUSTAKAAN UPT SMPN 4 MAPPEDECENG.
       `;
 
       const response = await ai.models.generateContent({
@@ -141,9 +152,9 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
       });
 
       const resultText = response.text;
-      if (!resultText) throw new Error("AI mengembalikan respon kosong.");
+      if (!resultText) throw new Error("AI tidak memberikan respon teks.");
 
-      // Bersihkan karakter markdown jika masih ada
+      // Pembersihan ganda karakter markdown
       const cleanText = resultText.replace(/[*#_]/g, '').trim();
       setAiReport(cleanText);
       
@@ -157,9 +168,9 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
 
     } catch (error: any) {
       console.error("AI Report Error:", error);
-      let msg = 'Sistem AI sedang sibuk. Silakan coba lagi beberapa saat lagi.';
-      if (error.message?.includes('401')) msg = 'API Key tidak valid.';
-      if (error.message?.includes('429')) msg = 'Kuota AI gratis Anda sudah habis hari ini.';
+      let msg = 'Sistem AI sedang mengalami gangguan jaringan. Silakan coba lagi.';
+      if (error.message?.includes('401')) msg = 'API Key yang Bro masukkan tidak valid. Cek kembali di Google AI Studio.';
+      if (error.message?.includes('429')) msg = 'Batas penggunaan gratis AI sudah habis. Coba lagi dalam beberapa jam.';
       setErrorMsg(msg);
     } finally {
       setIsGenerating(false);
@@ -180,7 +191,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
               </label>
               <input 
                 type="text" 
-                placeholder="Masukkan nama lengkap..."
+                placeholder="Nama lengkap petugas..."
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm"
                 value={librarianName}
                 onChange={(e) => setLibrarianName(e.target.value)}
@@ -212,9 +223,12 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
         </div>
 
         {errorMsg && (
-          <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-            <AlertCircle size={20} className="shrink-0" />
-            <p className="text-sm font-medium">{errorMsg}</p>
+          <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <AlertCircle size={20} className="shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="text-sm font-bold">Terjadi Kendala Konfigurasi</p>
+              <p className="text-xs opacity-90">{errorMsg}</p>
+            </div>
           </div>
         )}
 
@@ -261,12 +275,16 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
               <div className="p-2 bg-white rounded-lg shadow-sm">
                 <FileSearch size={20} />
               </div>
-              <span className="tracking-tight text-sm md:text-base">Hasil Laporan Deskriptif AI</span>
+              <span className="tracking-tight text-sm md:text-base">Draft Laporan Deskriptif</span>
               {isSynced && (
                 <div className="hidden md:flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full ml-2">
-                  <CheckCircle2 size={12} /> Sinkronisasi Cloud Berhasil
+                  <CheckCircle2 size={12} /> Tersimpan di Cloud
                 </div>
               )}
+            </div>
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+              <Key size={14} />
+              API Aktif
             </div>
           </div>
           
