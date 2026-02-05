@@ -89,10 +89,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
       : books.filter(b => b.category === categoryFilter);
 
     return {
-      totalBooks: relevantBooks.reduce((acc, curr) => acc + curr.count, 0),
+      totalBooks: relevantBooks.reduce((acc, curr) => acc + (curr.count || 0), 0),
       totalLoans: filteredLoans.length,
       totalLate: lateReturns.length,
-      totalFines: lateReturns.reduce((acc, curr) => acc + curr.fine, 0),
+      totalFines: lateReturns.reduce((acc, curr) => acc + (curr.fine || 0), 0),
       popularBook: topBooks[0]?.title || 'Belum ada data'
     };
   }, [books, filteredLoans, lateReturns, topBooks, categoryFilter]);
@@ -106,7 +106,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
 
     const apiKey = process.env.API_KEY;
     if (!apiKey || apiKey === "API_KEY_ANDA") {
-      setErrorMsg("API Key tidak ditemukan. Pastikan Anda sudah memasukkan API Key Gemini di pengaturan Environment Variables.");
+      setErrorMsg("API Key tidak ditemukan. Pastikan sudah diset di Vercel/Environment Variables.");
       return;
     }
     
@@ -117,46 +117,36 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
       const filterDesc = `Periode: ${dateFilter === 'all' ? 'Semua Waktu' : dateFilter}, Kategori: ${categoryFilter === 'all' ? 'Semua Kategori' : categoryFilter}`;
       
       const prompt = `
-        Buatlah laporan naratif formal untuk Perpustakaan UPT SMPN 4 Mappedeceng.
+        Tulis laporan naratif resmi untuk Perpustakaan UPT SMPN 4 Mappedeceng.
         
-        DATA STATISTIK:
-        - Nama Petugas: ${librarianName}
-        - Periode Laporan: ${filterDesc}
-        - Total Koleksi Buku: ${stats.totalBooks}
-        - Total Transaksi Peminjaman: ${stats.totalLoans}
-        - Buku Paling Banyak Dipinjam: ${stats.popularBook}
-        - Jumlah Siswa Terlambat Mengembalikan: ${stats.totalLate}
-        - Total Akumulasi Denda: Rp ${stats.totalFines.toLocaleString()}
+        DATA:
+        - Petugas: ${librarianName}
+        - Periode: ${filterDesc}
+        - Total Buku: ${stats.totalBooks}
+        - Total Peminjaman: ${stats.totalLoans}
+        - Buku Terfavorit: ${stats.popularBook}
+        - Siswa Terlambat: ${stats.totalLate}
+        - Total Denda: Rp ${stats.totalFines.toLocaleString()}
 
-        INSTRUKSI KHUSUS:
-        1. Gunakan bahasa Indonesia yang sangat formal, sopan, dan profesional (gaya surat resmi kedinasan).
-        2. Tuliskan dalam bentuk paragraf deskriptif yang mengalir, bukan daftar poin.
-        3. JANGAN GUNAKAN simbol markdown seperti bintang (**), pagar (#), atau strip (-) di awal kalimat. Teks harus benar-benar polos (plain text).
-        4. Berikan judul: LAPORAN RESMI SIRKULASI PERPUSTAKAAN UPT SMPN 4 MAPPEDECENG.
-        5. Sertakan analisis singkat mengenai minat baca siswa berdasarkan data tersebut di akhir narasi.
+        INSTRUKSI:
+        1. Gunakan Bahasa Indonesia formal (gaya laporan dinas pendidikan).
+        2. Tuliskan dalam bentuk paragraf mengalir (naratif).
+        3. JANGAN GUNAKAN format markdown (seperti **, ##, atau daftar poin).
+        4. Judul: LAPORAN RESMI SIRKULASI PERPUSTAKAAN UPT SMPN 4 MAPPEDECENG.
       `;
 
-      // Menggunakan model gemini-3-flash-preview sesuai instruksi
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
       });
 
       const resultText = response.text;
-      if (!resultText) {
-        throw new Error("AI mengembalikan respon kosong.");
-      }
+      if (!resultText) throw new Error("AI mengembalikan respon kosong.");
 
-      // Bersihkan sisa-sisa markdown jika AI masih bandel mengeluarkannya
-      const cleanText = resultText
-        .replace(/\*\*/g, '')
-        .replace(/\*/g, '')
-        .replace(/#/g, '')
-        .trim();
-
+      // Bersihkan karakter markdown jika masih ada
+      const cleanText = resultText.replace(/[*#_]/g, '').trim();
       setAiReport(cleanText);
       
-      // Simpan ke Cloud Spreadsheet
       storageService.saveReport({
         timestamp: new Date().toLocaleString('id-ID'),
         librarian: librarianName,
@@ -167,15 +157,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
 
     } catch (error: any) {
       console.error("AI Report Error:", error);
-      let friendlyError = 'Maaf, sistem AI sedang sibuk atau tidak merespons.';
-      
-      if (error.message?.includes('API_KEY_INVALID') || error.status === 401) {
-        friendlyError = 'API Key Anda tidak valid. Silakan periksa kembali di Google AI Studio.';
-      } else if (error.message?.includes('quota') || error.status === 429) {
-        friendlyError = 'Kuota penggunaan AI gratis Anda telah habis untuk saat ini.';
-      }
-      
-      setErrorMsg(friendlyError);
+      let msg = 'Sistem AI sedang sibuk. Silakan coba lagi beberapa saat lagi.';
+      if (error.message?.includes('401')) msg = 'API Key tidak valid.';
+      if (error.message?.includes('429')) msg = 'Kuota AI gratis Anda sudah habis hari ini.';
+      setErrorMsg(msg);
     } finally {
       setIsGenerating(false);
     }
@@ -248,7 +233,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
             >
               <option value="all">Semua Waktu</option>
               <option value="daily">Hari Ini</option>
-              <option value="weekly">Minggu Ini (7 Hari Terakhir)</option>
+              <option value="weekly">Minggu Ini</option>
               <option value="monthly">Bulan Ini</option>
             </select>
           </div>
@@ -266,14 +251,9 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
               ))}
             </select>
           </div>
-
-          <div className="ml-auto text-xs text-slate-400 italic">
-            Menampilkan {filteredLoans.length} data peminjaman terpilih
-          </div>
         </div>
       </header>
 
-      {/* AI Narrative Section */}
       {aiReport && (
         <div className="bg-white rounded-3xl shadow-xl border border-indigo-50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
           <div className="bg-gradient-to-r from-indigo-50 to-white px-8 py-5 border-b border-indigo-100 flex items-center justify-between">
@@ -281,36 +261,24 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
               <div className="p-2 bg-white rounded-lg shadow-sm">
                 <FileSearch size={20} />
               </div>
-              <span className="tracking-tight">Pratinjau Laporan Deskriptif</span>
+              <span className="tracking-tight text-sm md:text-base">Hasil Laporan Deskriptif AI</span>
               {isSynced && (
-                <div className="flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full ml-2">
-                  <CheckCircle2 size={12} /> Tersimpan ke Cloud
+                <div className="hidden md:flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full ml-2">
+                  <CheckCircle2 size={12} /> Sinkronisasi Cloud Berhasil
                 </div>
               )}
             </div>
-            <button 
-              onClick={() => { setAiReport(''); setIsSynced(false); }}
-              className="text-slate-400 hover:text-red-500 transition-colors text-sm font-bold"
-            >
-              Hapus Draft
-            </button>
           </div>
           
-          <div className="p-12 max-w-4xl mx-auto bg-white relative">
-            <div className="absolute top-10 right-10 opacity-[0.03] pointer-events-none">
-              <FileText size={200} />
-            </div>
-
-            <div className="font-serif text-slate-800 leading-[1.8] text-lg">
-              <div className="whitespace-pre-line text-justify first-letter:text-4xl first-letter:font-bold first-letter:text-indigo-600 first-letter:mr-2">
-                {aiReport}
-              </div>
+          <div className="p-10 md:p-16 max-w-4xl mx-auto bg-white">
+            <div className="font-serif text-slate-800 leading-[2] text-lg text-justify whitespace-pre-line">
+              {aiReport}
               
               <div className="mt-20 flex justify-end">
                 <div className="text-center w-64">
                   <p className="mb-20">Mappedeceng, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                   <p className="font-bold border-b-2 border-slate-900 inline-block px-4">{librarianName}</p>
-                  <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-sans font-bold">Kepala Unit Perpustakaan</p>
+                  <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest font-sans font-bold">Kepala Unit Perpustakaan</p>
                 </div>
               </div>
             </div>
@@ -322,7 +290,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
             <Award className="text-amber-500" size={22} />
-            Buku Terpopuler ({dateFilter !== 'all' ? dateFilter : 'Semua'})
+            Buku Terpopuler
           </h3>
           <div className="space-y-4">
             {topBooks.map((book, idx) => (
@@ -338,9 +306,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
                 </span>
               </div>
             ))}
-            {topBooks.length === 0 && (
-              <p className="text-center py-10 text-slate-400 italic">Belum ada data peminjaman untuk filter ini.</p>
-            )}
+            {topBooks.length === 0 && <p className="text-center py-10 text-slate-400 italic">Belum ada data peminjaman.</p>}
           </div>
         </div>
 
@@ -350,59 +316,21 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
             Rekap Keterlambatan
           </h3>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-                <p className="text-[10px] text-red-600 font-black uppercase tracking-wider mb-1">Kasus Terpilih</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-red-50 rounded-xl border border-red-100 text-center">
+                <p className="text-[10px] text-red-600 font-black uppercase tracking-wider mb-1">Total Kasus</p>
                 <p className="text-3xl font-black text-red-700">{lateReturns.length}</p>
               </div>
-              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 text-center">
                 <p className="text-[10px] text-emerald-600 font-black uppercase tracking-wider mb-1">Total Denda</p>
-                <p className="text-3xl font-black text-emerald-700">
-                  <span className="text-sm font-bold mr-1">Rp</span>
-                  {lateReturns.reduce((acc, curr) => acc + curr.fine, 0).toLocaleString()}
-                </p>
+                <p className="text-3xl font-black text-emerald-700">Rp{stats.totalFines.toLocaleString()}</p>
               </div>
             </div>
-            <div className="max-h-[220px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-              {lateReturns.map((loan) => (
-                <div key={loan.id} className="text-xs p-3 border border-slate-100 rounded-xl flex justify-between items-center bg-white hover:border-red-200 transition-all">
-                  <div>
-                    <span className="font-bold text-slate-800">{loan.memberName}</span>
-                    <p className="text-slate-400 font-medium truncate max-w-[150px]">{loan.bookTitle}</p>
-                  </div>
-                  <span className="px-2 py-1 bg-red-100 text-red-600 rounded-md font-bold text-[10px] uppercase">Terlambat</span>
-                </div>
-              ))}
-              {lateReturns.length === 0 && (
-                <p className="text-center py-10 text-slate-400 italic">Tidak ada keterlambatan terpilih.</p>
-              )}
-            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-        <h3 className="text-lg font-bold text-slate-800 mb-8 flex items-center gap-2">
-          <Calendar className="text-indigo-600" size={22} />
-          Ringkasan Statistik Filtered
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <ReportMetric label="Koleksi Relevan" value={stats.totalBooks.toString()} sub={`Kategori: ${categoryFilter}`} color="border-l-indigo-500" />
-          <ReportMetric label="Sirkulasi Filter" value={stats.totalLoans.toString()} sub={`Periode: ${dateFilter}`} color="border-l-violet-500" />
-          <ReportMetric label="Keterlambatan" value={stats.totalLate.toString()} sub="Berdasarkan filter" color="border-l-red-500" />
-          <ReportMetric label="Estimasi Denda" value={`Rp${(stats.totalFines/1000).toFixed(1)}k`} sub="Total akumulasi" color="border-l-emerald-500" />
         </div>
       </div>
     </div>
   );
 };
-
-const ReportMetric = ({ label, value, sub, color }: { label: string, value: string, sub: string, color: string }) => (
-  <div className={`p-6 bg-slate-50/50 border-l-4 ${color} rounded-r-2xl transition-all hover:bg-white hover:shadow-md cursor-default`}>
-    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
-    <p className="text-3xl font-black text-slate-800 my-1">{value}</p>
-    <p className="text-xs text-slate-500 font-medium">{sub}</p>
-  </div>
-);
 
 export default ReportsPage;
