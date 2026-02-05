@@ -5,7 +5,6 @@ import {
   Search, 
   Edit, 
   Trash2, 
-  MoreVertical,
   Filter,
   ArrowUpDown
 } from 'lucide-react';
@@ -31,11 +30,15 @@ const BooksPage: React.FC<BooksPageProps> = ({ books, onAddBook, onDeleteBook, r
     count: 1
   });
 
-  const filteredBooks = books.filter(book => 
-    book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    book.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Tambahkan pengaman (book.field || '') agar tidak crash jika ada data null
+  const filteredBooks = books.filter(book => {
+    const term = searchTerm.toLowerCase();
+    return (
+      (book.title || '').toLowerCase().includes(term) ||
+      (book.author || '').toLowerCase().includes(term) ||
+      (book.code || '').toLowerCase().includes(term)
+    );
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,9 +127,9 @@ const BooksPage: React.FC<BooksPageProps> = ({ books, onAddBook, onDeleteBook, r
                   <td className="px-6 py-4 text-center font-semibold">{book.count}</td>
                   <td className="px-6 py-4 text-center">
                     <span className={`px-2 py-1 rounded-full text-[11px] font-bold ${
-                      book.available > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                      (book.available || 0) > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
                     }`}>
-                      {book.available}
+                      {book.available || 0}
                     </span>
                   </td>
                   {role === UserRole.ADMIN && (
@@ -161,7 +164,7 @@ const BooksPage: React.FC<BooksPageProps> = ({ books, onAddBook, onDeleteBook, r
       {/* Modal Add Book */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
             <div className="p-6 border-b border-slate-100">
               <h3 className="text-xl font-bold text-slate-800">Tambah Koleksi Baru</h3>
             </div>
