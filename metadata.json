@@ -1,0 +1,5 @@
+{
+  "name": "E-Pustaka SMPN 4 Mappedeceng",
+  "description": "Aplikasi manajemen perpustakaan sekolah modern untuk UPT SMPN 4 Mappedeceng, mendukung manajemen buku, anggota, peminjaman, dan laporan otomatis.",
+  "requestFramePermissions": []
+}
