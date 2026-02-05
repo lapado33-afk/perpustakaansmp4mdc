@@ -12,7 +12,8 @@ import {
   FileSearch,
   User,
   Filter,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { Book, Loan, Member, LoanStatus } from '../types';
 import { GoogleGenAI } from "@google/genai";
@@ -29,6 +30,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
   const [aiReport, setAiReport] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSynced, setIsSynced] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [librarianName, setLibrarianName] = useState('Admin Perpustakaan');
   
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
@@ -96,63 +98,84 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
   }, [books, filteredLoans, lateReturns, topBooks, categoryFilter]);
 
   const generateAIReport = async () => {
+    setErrorMsg(null);
     if (!librarianName.trim()) {
-      alert("Mohon masukkan nama petugas terlebih dahulu.");
+      setErrorMsg("Mohon masukkan nama petugas pelapor.");
+      return;
+    }
+
+    const apiKey = process.env.API_KEY;
+    if (!apiKey || apiKey === "API_KEY_ANDA") {
+      setErrorMsg("API Key tidak ditemukan. Pastikan Anda sudah memasukkan API Key Gemini di pengaturan Environment Variables.");
       return;
     }
     
     setIsGenerating(true);
     setIsSynced(false);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const filterDesc = `Periode: ${dateFilter === 'all' ? 'Semua Waktu' : dateFilter}, Kategori: ${categoryFilter === 'all' ? 'Semua Kategori' : categoryFilter}`;
       
       const prompt = `
-        Buatlah laporan naratif formal untuk UPT SMPN 4 Mappedeceng.
-        Petugas: ${librarianName}
-        Filter Laporan: ${filterDesc}
-        Data:
-        - Total Koleksi Terkait: ${stats.totalBooks}
+        Buatlah laporan naratif formal untuk Perpustakaan UPT SMPN 4 Mappedeceng.
+        
+        DATA STATISTIK:
+        - Nama Petugas: ${librarianName}
+        - Periode Laporan: ${filterDesc}
+        - Total Koleksi Buku: ${stats.totalBooks}
         - Total Transaksi Peminjaman: ${stats.totalLoans}
-        - Buku Paling Diminati: ${stats.popularBook}
-        - Jumlah Siswa Terlambat: ${stats.totalLate}
-        - Total Estimasi Denda: Rp ${stats.totalFines.toLocaleString()}
+        - Buku Paling Banyak Dipinjam: ${stats.popularBook}
+        - Jumlah Siswa Terlambat Mengembalikan: ${stats.totalLate}
+        - Total Akumulasi Denda: Rp ${stats.totalFines.toLocaleString()}
 
-        ATURAN PENTING:
-        1. JANGAN GUNAKAN simbol markdown seperti bintang-bintang (**), pagar (#), atau strip (-) di awal kalimat.
-        2. Gunakan teks polos (plain text) yang bersih dan rapi.
-        3. Gunakan gaya bahasa Indonesia yang sangat formal dan profesional (bahasa surat resmi).
-        4. Tulis dalam bentuk paragraf mengalir yang enak dibaca.
-        5. Berikan judul: LAPORAN RESMI KEPALA UNIT PERPUSTAKAAN UPT SMPN 4 MAPPEDECENG.
+        INSTRUKSI KHUSUS:
+        1. Gunakan bahasa Indonesia yang sangat formal, sopan, dan profesional (gaya surat resmi kedinasan).
+        2. Tuliskan dalam bentuk paragraf deskriptif yang mengalir, bukan daftar poin.
+        3. JANGAN GUNAKAN simbol markdown seperti bintang (**), pagar (#), atau strip (-) di awal kalimat. Teks harus benar-benar polos (plain text).
+        4. Berikan judul: LAPORAN RESMI SIRKULASI PERPUSTAKAAN UPT SMPN 4 MAPPEDECENG.
+        5. Sertakan analisis singkat mengenai minat baca siswa berdasarkan data tersebut di akhir narasi.
       `;
 
+      // Menggunakan model gemini-3-flash-preview sesuai instruksi
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: prompt,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
       });
 
-      const cleanText = (response.text || '')
+      const resultText = response.text;
+      if (!resultText) {
+        throw new Error("AI mengembalikan respon kosong.");
+      }
+
+      // Bersihkan sisa-sisa markdown jika AI masih bandel mengeluarkannya
+      const cleanText = resultText
         .replace(/\*\*/g, '')
         .replace(/\*/g, '')
         .replace(/#/g, '')
         .trim();
 
-      setAiReport(cleanText || 'Gagal menghasilkan laporan.');
+      setAiReport(cleanText);
       
-      // KIRIM KE GOOGLE SPREADSHEET
-      if (cleanText) {
-        storageService.saveReport({
-          timestamp: new Date().toLocaleString('id-ID'),
-          librarian: librarianName,
-          filter: filterDesc,
-          content: cleanText
-        });
-        setIsSynced(true);
-      }
+      // Simpan ke Cloud Spreadsheet
+      storageService.saveReport({
+        timestamp: new Date().toLocaleString('id-ID'),
+        librarian: librarianName,
+        filter: filterDesc,
+        content: cleanText
+      });
+      setIsSynced(true);
 
-    } catch (error) {
-      console.error(error);
-      setAiReport('Maaf, sistem AI sedang sibuk. Silakan coba lagi nanti.');
+    } catch (error: any) {
+      console.error("AI Report Error:", error);
+      let friendlyError = 'Maaf, sistem AI sedang sibuk atau tidak merespons.';
+      
+      if (error.message?.includes('API_KEY_INVALID') || error.status === 401) {
+        friendlyError = 'API Key Anda tidak valid. Silakan periksa kembali di Google AI Studio.';
+      } else if (error.message?.includes('quota') || error.status === 429) {
+        friendlyError = 'Kuota penggunaan AI gratis Anda telah habis untuk saat ini.';
+      }
+      
+      setErrorMsg(friendlyError);
     } finally {
       setIsGenerating(false);
     }
@@ -164,7 +187,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-slate-800">Laporan & Rekapitulasi</h1>
-            <p className="text-slate-500 mb-4">Analisis data sirkulasi buku secara otomatis.</p>
+            <p className="text-slate-500 mb-4">Analisis data sirkulasi buku secara otomatis menggunakan AI.</p>
             
             <div className="max-w-xs space-y-1">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
@@ -202,6 +225,13 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
             </button>
           </div>
         </div>
+
+        {errorMsg && (
+          <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <AlertCircle size={20} className="shrink-0" />
+            <p className="text-sm font-medium">{errorMsg}</p>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
           <div className="flex items-center gap-2 text-slate-500 mr-2">
@@ -280,7 +310,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ books, loans }) => {
                 <div className="text-center w-64">
                   <p className="mb-20">Mappedeceng, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                   <p className="font-bold border-b-2 border-slate-900 inline-block px-4">{librarianName}</p>
-                  <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-sans font-bold">Kepala Perpustakaan</p>
+                  <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-sans font-bold">Kepala Unit Perpustakaan</p>
                 </div>
               </div>
             </div>
